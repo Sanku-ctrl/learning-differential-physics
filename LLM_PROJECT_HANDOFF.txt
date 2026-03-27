@@ -1,0 +1,431 @@
+Neural Physics Solver (1D Heat Equation) - Detailed Technical Handoff
+Date: 2026-03-27
+
+============================================================
+1) PROJECT GOAL (WHAT THIS CODEBASE DOES)
+============================================================
+
+This project solves the 1D heat equation using two methods and compares them:
+
+1. Numerical baseline: Finite Difference Method (FDM), explicit FTCS scheme
+2. Machine learning method: Physics-Informed Neural Network (PINN) in PyTorch
+
+Primary PDE:
+
+u_t = alpha * u_xx
+
+with the default setup:
+
+- Spatial domain: x in [0, 1]
+- Time domain: t in [0, 1]
+- Initial condition: u(x, 0) = sin(pi x)
+- Boundary conditions: u(0, t) = 0 and u(1, t) = 0
+- Diffusion coefficient: alpha = 0.1
+
+The code computes:
+
+- PINN prediction u_pinn(x,t)
+- FDM solution u_fdm(x,t)
+- Analytical reference u_exact(x,t) for the chosen IC/BC
+- Error metrics (MSE, relative L2)
+- Diagnostic plots and exported CSV/model artifacts
+
+============================================================
+2) IMPORTANT FILES AND WHAT EACH ONE DOES
+============================================================
+
+A) src/fdm_solver.py
+
+Purpose:
+- Implements the explicit FTCS finite-difference solver for the 1D heat equation.
+
+Key function:
+- solve_heat_equation_ftcs(...)
+
+Inputs:
+- x_domain, t_domain
+- nx, nt (grid resolution)
+- alpha
+- initial_condition function
+- boundary_conditions tuple (left_bc, right_bc)
+
+Outputs:
+- x grid (1D)
+- t grid (1D)
+- u array with shape (nt, nx)
+
+Important logic:
+- Computes dx and dt from domain and grid sizes.
+- Enforces stability condition:
+  dt <= dx^2 / (2*alpha)
+  If violated, raises ValueError.
+- Uses FTCS update in interior points:
+  u_{n+1,i} = u_{n,i} + r*(u_{n,i+1} - 2*u_{n,i} + u_{n,i-1}),
+  where r = alpha*dt/dx^2.
+- Applies boundary values at every time step.
+
+Why this matters:
+- FDM gives a trusted numerical baseline for PINN comparison.
+- Stability check prevents exploding/invalid numerical trajectories.
+
+
+B) src/pinn_model.py
+
+Purpose:
+- Defines the PINN architecture and physics-informed loss terms.
+
+Key components:
+1. class PINN(nn.Module)
+   - MLP mapping (x, t) -> u
+   - 3 hidden layers, width 24, Tanh activations
+
+2. compute_heat_equation_losses(...)
+   - Returns weighted total loss + component losses
+   - Uses autograd to compute derivatives:
+     - u_x and u_t from first derivative wrt (x,t)
+     - u_xx from second derivative wrt x
+
+Loss decomposition:
+- PDE residual loss:
+  PDE_loss = mean((u_t - alpha*u_xx)^2) over interior points
+- Initial condition loss:
+  IC_loss = mean((u(x,0) - sin(pi*x))^2)
+- Boundary condition loss:
+  BC_loss = mean((u(0,t)-0)^2) + mean((u(1,t)-0)^2)
+
+Total:
+- total_loss = w1*PDE_loss + w2*IC_loss + w3*BC_loss
+  with default weights (1,1,1)
+
+Why this matters:
+- This is the core physics-constrained learning step.
+- It avoids supervised labels over the full space-time domain by enforcing PDE physics.
+
+
+C) src/train.py
+
+Purpose:
+- End-to-end orchestration: sampling, training PINN, solving FDM, evaluating metrics, exporting outputs.
+
+Main structures:
+1. TrainingConfig dataclass
+   - Domain params, grid sizes, sampling sizes, optimizer params, seed, logging frequency
+
+2. high_accuracy_config()
+   - Returns stronger training setup aimed at better accuracy:
+     - epochs = 3000
+     - learning_rate = 5e-4
+     - n_interior = 4000
+     - n_boundary = 512
+     - n_initial = 512
+     - log_every = 200
+
+3. _sample_points(...)
+   - Uniform random sampling for:
+     - interior points (for PDE residual)
+     - initial line t=0 (for IC)
+     - left/right boundaries x=0 and x=1 (for BC)
+
+4. train_and_compare(...)
+   Training flow:
+   - set random seeds
+   - choose device (cuda if available, else cpu)
+   - instantiate PINN + Adam optimizer
+   - for each epoch:
+     - sample points
+     - compute total and component losses
+     - backprop + optimizer step
+     - log losses to history arrays
+     - print only at epoch 1, every log_every, and final epoch
+   - run FDM solver on same domain/grid
+   - predict PINN on full (x,t) mesh
+   - compute exact analytical solution
+   - compute metrics:
+     - mse_pinn_vs_fdm
+     - l2_pinn_vs_fdm
+     - mse_pinn_vs_exact
+     - l2_pinn_vs_exact
+   - return TrainingArtifacts object
+
+5. export_artifacts(...)
+   - Saves run outputs into output directory:
+     - metrics.csv
+     - loss_history.csv
+     - loss_history.png
+     - fdm_heatmap.png
+     - pinn_heatmap.png
+     - comparison_time_slices.png
+     - pinn_model.pt
+
+Why this matters:
+- This file integrates all key pieces into reproducible experiments and traceable artifacts.
+
+
+D) src/utils.py
+
+Purpose:
+- Reproducibility, analytical reference solution, metrics, default conditions.
+
+Key functions:
+- set_seed(...): sets Python/NumPy/Torch seeds
+- heat_equation_analytical_solution(...):
+  u_exact(x,t) = exp(-pi^2*alpha*t) * sin(pi*x)
+- mse(...)
+- l2_relative_error(...)
+- default_initial_condition(...): sin(pi*x)
+- default_boundary_conditions(...): both boundaries equal zero
+
+Why this matters:
+- Gives a mathematically valid ground-truth reference under the current IC/BC choice.
+
+
+E) src/visualization.py
+
+Purpose:
+- Plotting for solution diagnostics.
+
+Functions:
+- plot_heatmap(...): space-time heatmap of u(x,t)
+- plot_time_slices(...): line comparisons at selected times
+- plot_loss_history(...): log-scale training curves for total/PDE/IC/BC losses
+
+Why this matters:
+- Visual diagnostics detect underfitting, boundary mismatch, and qualitative behavior.
+
+
+F) notebooks/experiments.ipynb
+
+Purpose:
+- Interactive workflow for training and exporting.
+
+Current notebook flow:
+- Cell 1: project title/description
+- Cell 2: import path setup, module reload, imports from train/visualization
+- Cell 3: build config and run train_and_compare
+- Cell 4: plot diagnostics and export artifacts to outputs folder
+
+Why this matters:
+- Primary user-facing experimentation surface.
+
+
+G) outputs/ folder
+
+Purpose:
+- Stores generated experiment artifacts (CSV, plots, model weights).
+
+This folder is intentionally in the project structure to keep outputs separate from source code.
+It is the correct place to persist experiment history and shareable results.
+
+
+H) README.md
+
+Purpose:
+- High-level overview and run instructions.
+
+============================================================
+3) MATHEMATICS USED, AND HOW IT IS USED IN CODE
+============================================================
+
+------------------------------------------------------------
+3.1 Governing PDE
+------------------------------------------------------------
+
+Heat equation in 1D:
+
+u_t = alpha * u_xx
+
+Interpretation:
+- u_t is time rate of change.
+- u_xx is curvature in space.
+- alpha controls diffusion speed.
+
+With sine initial condition + homogeneous Dirichlet boundaries, exact solution is:
+
+u(x,t) = exp(-pi^2 * alpha * t) * sin(pi*x)
+
+This exact formula is used for quantitative benchmarking.
+
+
+------------------------------------------------------------
+3.2 FDM (FTCS) discretization math
+------------------------------------------------------------
+
+Grid:
+- x_i = x_min + i*dx
+- t_n = t_min + n*dt
+
+Derivatives approximated by:
+- u_t ≈ (u_i^{n+1} - u_i^n)/dt
+- u_xx ≈ (u_{i+1}^n - 2u_i^n + u_{i-1}^n)/dx^2
+
+Substitute into PDE:
+
+(u_i^{n+1} - u_i^n)/dt = alpha * (u_{i+1}^n - 2u_i^n + u_{i-1}^n)/dx^2
+
+Rearrange explicit update:
+
+u_i^{n+1} = u_i^n + r*(u_{i+1}^n - 2u_i^n + u_{i-1}^n),
+where r = alpha*dt/dx^2.
+
+Stability requirement (for explicit FTCS):
+
+dt <= dx^2/(2*alpha)
+
+The implementation enforces this before time stepping.
+
+
+------------------------------------------------------------
+3.3 PINN objective math
+------------------------------------------------------------
+
+PINN model f_theta(x,t) approximates u(x,t).
+
+Loss has three terms:
+
+1) PDE residual on interior points:
+   r_theta(x,t) = u_t - alpha*u_xx
+   PDE_loss = E[(r_theta)^2]
+
+2) Initial condition mismatch:
+   IC_loss = E[(u(x,0) - sin(pi*x))^2]
+
+3) Boundary mismatch:
+   BC_loss = E[(u(0,t)-0)^2] + E[(u(1,t)-0)^2]
+
+Total objective:
+
+L(theta) = w1*PDE_loss + w2*IC_loss + w3*BC_loss
+
+In this code, default weights are all 1.0.
+
+Derivative computation details:
+- Uses torch.autograd.grad with create_graph=True.
+- First gradient gives [du/dx, du/dt].
+- Second gradient applied to du/dx gives d2u/dx2.
+
+This makes the PDE residual differentiable wrt network parameters theta.
+
+
+------------------------------------------------------------
+3.4 Optimization and sampling strategy
+------------------------------------------------------------
+
+Optimizer:
+- Adam
+
+Sampling:
+- Interior points are sampled uniformly over (x,t) domain.
+- Initial points sampled at t=0 with random x.
+- Boundary points sampled at x=0 and x=1 with random t.
+
+This is a mesh-free training process for the PINN part.
+
+
+------------------------------------------------------------
+3.5 Evaluation metrics
+------------------------------------------------------------
+
+MSE:
+MSE(y_true, y_pred) = mean((y_true - y_pred)^2)
+
+Relative L2:
+||y_true - y_pred||_2 / ||y_true||_2
+
+Computed for:
+- PINN vs FDM
+- PINN vs exact analytical solution
+
+============================================================
+4) RESULTS (CURRENT KNOWN NUMBERS)
+============================================================
+
+There are two relevant result sets:
+
+A) Earlier user-reported run (1000 epochs):
+- mse_pinn_vs_fdm  = 2.0393783328407726e-05
+- l2_pinn_vs_fdm   = 0.00971750953453406
+- mse_pinn_vs_exact= 2.0355658165012336e-05
+- l2_pinn_vs_exact = 0.009708286051645912
+
+Interpretation:
+- Relative L2 around 0.97%, already strong.
+
+B) Current exported outputs/metrics.csv (3000 epochs high-accuracy run):
+- mse_pinn_vs_fdm  = 4.697430349500422e-06
+- l2_pinn_vs_fdm   = 0.004663760605783649
+- mse_pinn_vs_exact= 4.676120337304753e-06
+- l2_pinn_vs_exact = 0.004653104746905604
+
+Interpretation:
+- Relative L2 around 0.47%, significantly improved over 1000-epoch run.
+- Both FDM and exact comparisons are consistent, suggesting PINN tracks the true solution well.
+
+Training loss progression snapshot from outputs/loss_history.csv:
+- epoch 1 total loss:    8.310008e-01
+- epoch 3000 total loss: 1.395193e-04
+
+Interpretation:
+- Loss reduced by several orders of magnitude.
+- Indicates stable optimization and improved physics/constraint fit.
+
+============================================================
+5) WHY ONLY FEW LOG LINES APPEAR DURING TRAINING
+============================================================
+
+If epochs=1000 and log_every=100, logs appear at:
+- 1, 100, 200, ..., 1000
+
+If epochs=1000 and old behavior used 500-step logging, logs appear at:
+- 1, 500, 1000
+
+So sparse logs do NOT mean fewer epochs were run.
+Epoch count is verified by len(loss_history["total"]).
+
+============================================================
+6) WHAT IS IN outputs/ AND WHY IT EXISTS
+============================================================
+
+Current files observed in outputs/:
+- comparison_time_slices.png
+- fdm_heatmap.png
+- loss_history.csv
+- loss_history.png
+- metrics.csv
+- pinn_heatmap.png
+- pinn_model.pt
+
+Why this folder exists:
+- It is the project’s canonical artifact storage.
+- Keeps generated assets out of src/.
+- Supports reproducibility, reporting, and sharing.
+
+============================================================
+7) EXPERIMENT FLOW (HOW TO REPRODUCE)
+============================================================
+
+Notebook path:
+- notebooks/experiments.ipynb
+
+Recommended cell order:
+1. Run import/reload cell.
+2. Run training cell with high_accuracy_config().
+3. Run visualization/export cell.
+
+Expected outputs:
+- Console logs at configured intervals.
+- Metrics dictionary in notebook output.
+- Saved CSV/plots/model in outputs/.
+
+============================================================
+8) NOTES FOR FUTURE IMPROVEMENT (OPTIONAL)
+============================================================
+
+Potential next steps if you want even better scientific rigor/performance:
+- Add checkpointing every N epochs.
+- Add validation grid snapshots during training.
+- Add run-specific timestamped subfolders in outputs/.
+- Add ablation over loss weights (w1,w2,w3).
+- Add more IC/BC families to test generality.
+- Try learning rate schedules or LBFGS fine-tuning after Adam.
+
+End of handoff.

@@ -1,0 +1,5 @@
+metric,value
+mse_pinn_vs_fdm,2.0761581339432294e-06
+l2_pinn_vs_fdm,0.0031005325111343736
+mse_pinn_vs_exact,2.0887192456397617e-06
+l2_pinn_vs_exact,0.003109854167519421
