@@ -40,8 +40,8 @@ Where:
 
 * Spatial domain: $x \in [0,1]$
 * Time domain: $t \in [0,1]$
-* Initial condition:$u(x,0) = \sin(\pi x)$
-* Boundary conditions:$u(0,t) = 0, \quad u(1,t) = 0$
+* Initial condition: $u(x,0) = \sin(\pi x)$
+* Boundary conditions: $u(0,t) = 0, \quad u(1,t) = 0$
 
 ---
 
@@ -66,10 +66,13 @@ A classical numerical approach using the **Forward-Time Central-Space (FTCS)** s
 #### Discretization
 
 * Time derivative:
+
   $$
   u_t \approx \frac{u_i^{n+1} - u_i^n}{\Delta t}
   $$
+
 * Second spatial derivative:
+
   $$
   u_{xx} \approx \frac{u_{i+1}^n - 2u_i^n + u_{i-1}^n}{\Delta x^2}
   $$
@@ -81,6 +84,7 @@ u_i^{n+1} = u_i^n + r \left(u_{i+1}^n - 2u_i^n + u_{i-1}^n \right)
 $$
 
 where:
+
 $$
 r = \frac{\alpha \Delta t}{\Delta x^2}
 $$
