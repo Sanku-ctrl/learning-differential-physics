@@ -66,16 +66,10 @@ A classical numerical approach using the **Forward-Time Central-Space (FTCS)** s
 #### Discretization
 
 * Time derivative:
-
-  $$
-  u_t \approx \frac{u_i^{n+1} - u_i^n}{\Delta t}
-  $$
+`u_t ≈ (u_i^{n+1} - u_i^n) / Δt`
 
 * Second spatial derivative:
-
-  $$
-  u_{xx} \approx \frac{u_{i+1}^n - 2u_i^n + u_{i-1}^n}{\Delta x^2}
-  $$
+`u_xx ≈ (u_{i+1}^n - 2u_i^n + u_{i-1}^n) / (Δx²)`
 
 #### Update Rule
 
