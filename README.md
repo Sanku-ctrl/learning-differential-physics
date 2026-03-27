@@ -40,14 +40,8 @@ Where:
 
 * Spatial domain: $x \in [0,1]$
 * Time domain: $t \in [0,1]$
-* Initial condition:
-  $$
-  u(x,0) = \sin(\pi x)
-  $$
-* Boundary conditions:
-  $$
-  u(0,t) = 0, \quad u(1,t) = 0
-  $$
+* Initial condition:$u(x,0) = \sin(\pi x)$
+* Boundary conditions:$u(0,t) = 0, \quad u(1,t) = 0$
 
 ---
 
@@ -316,18 +310,20 @@ jupyter notebook notebooks/experiments.ipynb
 
 ---
 
-## Author
-
-**Sanket Motagi**
-BTech Computational & Mathematics
-March 2026
-
-GitHub: https://github.com/Sanku-ctrl
-
----
-
 ## License
 
-This project is for educational and research purposes. Feel free to use and extend.
+This project is provided as-is for educational purposes. Feel free to use, modify, and distribute.
+
+## Author
+
+**Sanket Motagi** | Created: March 2026  
+GitHub: [@Sanku-ctrl](https://github.com/Sanku-ctrl)
+
+## Contact & Contributing
+
+Found a bug or have suggestions? Feel free to:
+- Open an issue on GitHub
+- Submit a pull request
+- Contact via email
 
 ---
